@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  assemble-and-emulate:
+    name: assemble (${{ matrix.toolchain }}) + emulate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gnu, zig]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install GNU ARM toolchain
+        if: matrix.toolchain == 'gnu'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils-arm-none-eabi
+
+      - name: Install emulator (and zig assembler)
+        run: |
+          pip install unicorn
+          if [ "${{ matrix.toolchain }}" = "zig" ]; then pip install ziglang; fi
+
+      - name: Assemble
+        run: make TOOLCHAIN=${{ matrix.toolchain }} all && ls -l build/
+
+      - name: Emulate and verify the frame (80/80/80 rows, in-bounds, halts)
+        run: make TOOLCHAIN=${{ matrix.toolchain }} run
+
+      - name: Show the legacy program's defects (informational)
+        run: make TOOLCHAIN=${{ matrix.toolchain }} legacy
+
+      - name: Upload rendered frame
+        uses: actions/upload-artifact@v6
+        with:
+          name: flag-${{ matrix.toolchain }}
+          path: build/flag.png
